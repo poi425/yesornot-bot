@@ -13,60 +13,38 @@ mastodon = Mastodon(
     api_base_url=INSTANCE_URL
 )
 
-class MentionListener(StreamListener):
-    def on_notification(self, notification):
-        if notification['type'] == 'mention':
-            acct = notification['account']['acct']
-            reply_id = notification['status']['id']
-            content = notification['status']['content']
-            content_text = content.lower()  # 소문자로 변환해 키워드 감지
+# 자신의 계정 정보 미리 가져옴
+myself = mastodon.account_verify_credentials()["acct"]
 
-            # 1. 자기 자신 멘션이면 무시
-            if acct == mastodon.account_verify_credentials()["acct"]:
-                return
-
-            # 2. [YN] 키워드 없으면 무시
-            if "[yn]" not in content_text:
-                print(f"⚠️ [YN] 키워드 없음 → 무시: @{acct}")
-                return
-
-            # 3. 정상 응답
-            answer = random.choice(["Y", "N"])
-            status = f"@{acct} {answer}"
-            mastodon.status_post(status, in_reply_to_id=reply_id)
-            print(f"✅ [YN] 멘션 감지 → @{acct} → 응답: {answer}")
-
-# 캐시를 위한 집합 선언
+# 중복 응답 방지 캐시
 already_replied = set()
 
 class MentionListener(StreamListener):
     def on_notification(self, notification):
-        if notification['type'] == 'mention':
-            acct = notification['account']['acct']
-            status_id = notification['status']['id']
-            content = notification['status']['content']
-            content_text = content.lower()
+        if notification['type'] != 'mention':
+            return
 
-            # 자기 자신이면 무시
-            if acct == mastodon.account_verify_credentials()["acct"]:
-                return
+        acct = notification['account']['acct']
+        status_id = notification['status']['id']
+        content = notification['status']['content']
+        content_text = content.lower()
 
-            # [YN] 키워드 없으면 무시
-            if "[yn]" not in content_text:
-                return
+        # 이미 응답한 멘션이면 무시
+        if status_id in already_replied:
+            return
 
-            # 이미 응답한 멘션이면 무시
-            if status_id in already_replied:
-                print(f"⚠️ 이미 응답한 멘션: @{acct}")
-                return
+        # [YN] 키워드 없으면 무시
+        if "[yn]" not in content_text:
+            return
 
-            # 응답 처리
-            already_replied.add(status_id)
-            answer = random.choice(["Y", "N"])
-            status = f"@{acct} {answer}"
-            mastodon.status_post(status, in_reply_to_id=status_id)
-            print(f"✅ 멘션 응답 완료: @{acct} → {answer}")
+        # mention 목록 중 나 자신만 들어 있는지 확인
+        mention_list = [m["acct"] for m in notification['status']['mentions']]
+        if mention_list.count(myself) != 1 or len(mention_list) != 1:
+            print(f"⚠️ 멘션이 여러 명에게 보내졌음 → 무시: {mention_list}")
+            return
 
-
-print(f"🤖 봇 작동 시작! 서버: {INSTANCE_URL}")
-mastodon.stream_user(MentionListener())
+        # 자기 멘션이 맞고, [YN] 키워드 있고, 중복 아니면 응답
+        already_replied.add(status_id)
+        answer = random.choice(["Y", "N"])
+        mastodon.status_post(f"@{acct} {answer}", in_reply_to_id=status_id)
+        print(f"✅ 응답 완료 → @{acct} → {answer}")
