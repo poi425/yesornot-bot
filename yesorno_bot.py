@@ -61,7 +61,7 @@ class UnifiedBotListener(StreamListener):
         if "[yn]" in content:
             reply = random.choice(["Y", "N"])
         elif "[1d20]" in content:
-            reply = f"🎲 {random.randint(1, 20)}"
+            reply = f"{random.randint(1, 20)}"
 
         if reply:
             mastodon.status_post(f"@{acct} {reply}", in_reply_to_id=status_id)
